@@ -27,5 +27,5 @@ with model:
     
     nengo.Connection(error, learn_conn.learning_rule)
     
-    stop_learn = nengo.Node(0)
+    stop_learn = nengo.Node(1)
     nengo.Connection(stop_learn, error.neurons, transform=-10*np.ones((100,1)))

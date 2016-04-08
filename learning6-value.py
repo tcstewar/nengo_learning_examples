@@ -80,8 +80,8 @@ def detect(t):
     angles = (np.linspace(-0.5, 0.5, 3) + body.dir ) % world.directions
     return [body.detect(d, max_distance=4)[0] for d in angles]
 
-
-model = nengo.Network()
+np.random.seed(1)
+model = nengo.Network(seed=2)
 with model:
     movement = nengo.Node(move, size_in=2)
 

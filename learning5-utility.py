@@ -52,7 +52,7 @@ world = ccm.lib.grid.World(Cell, map=mymap, directions=4)
 body = ccm.lib.continuous.Body()
 world.add(body, x=1, y=3, dir=2)
 
-model = nengo.Network(seed=2)
+model = nengo.Network(seed=8)
 with model:
     def move(t, x):
         speed, rotation = x
@@ -62,9 +62,9 @@ with model:
         body.turn(rotation * dt * max_rotate)
         success = body.go_forward(speed * dt * max_speed)
         if not success:
-            return -1
+            return 0
         else:
-            return speed
+            return 0.4+speed
 
     movement = nengo.Ensemble(n_neurons=100, dimensions=2, radius=1.4)
     
