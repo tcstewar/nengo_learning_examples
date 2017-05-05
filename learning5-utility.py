@@ -47,7 +47,7 @@ class Cell(ccm.lib.grid.Cell):
         if char == '#':
             self.wall = True
 
-world = ccm.lib.grid.World(Cell, map=mymap, directions=4)
+world = ccm.lib.cellular.World(Cell, map=mymap, directions=4)
 
 body = ccm.lib.continuous.Body()
 world.add(body, x=1, y=3, dir=2)

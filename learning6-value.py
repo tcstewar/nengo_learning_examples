@@ -55,7 +55,7 @@ class Cell(ccm.lib.grid.Cell):
         elif char == 'B':
             self.reward = -10
 
-world = ccm.lib.grid.World(Cell, map=mymap, directions=4)
+world = ccm.lib.cellular.World(Cell, map=mymap, directions=4)
 
 body = ccm.lib.continuous.Body()
 world.add(body, x=1, y=2, dir=2)
