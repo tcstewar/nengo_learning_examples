@@ -101,48 +101,52 @@ with model:
     speed = nengo.Node(lambda t, x: body.go_forward(x[0]*0.01), size_in=1)
     turn = nengo.Node(lambda t, x: body.turn(x[0]*0.01), size_in=1)
     
+
+    
     facing_reward = FacingReward(body, prey)
     
     state = State(body, prey)
     
     s = nengo.Ensemble(n_neurons=200, dimensions=2, intercepts=nengo.dists.Uniform(0,1))
     nengo.Connection(state, s, synapse=None)
+
+
+    def choice(t, x):
+        if x[0] > x[1]:
+            return 1,0
+        else:
+            return 0,1
+    choice = nengo.Node(choice, size_in=2)
+
+    q = nengo.Node(None, size_in=2)
     
-    
-    q = nengo.networks.EnsembleArray(n_neurons=50, n_ensembles=2)
-    
-    noise = nengo.Node(nengo.processes.WhiteSignal(period=10.0, high=0.5, 
-                        rms=0.1), size_out=2)
-    nengo.Connection(noise, q.output)
-    
-    conn = nengo.Connection(s, q.input, function=lambda x: [0,0],
+    nengo.Connection(q, choice)
+
+    conn = nengo.Connection(s, q, function=lambda x: [0,0],
                             learning_rule_type=nengo.PES(learning_rate=1e-4))
     
-    nengo.Connection(q.output[0], turn, transform=-1, synapse=0.1)
-    nengo.Connection(q.output[1], turn, transform=1, synapse=0.1)
-    
-    error = nengo.networks.EnsembleArray(n_neurons=50, n_ensembles=2)
-    nengo.Connection(q.output, error.input)
+    nengo.Connection(choice[0], turn, transform=-1, synapse=0.1)
+    nengo.Connection(choice[1], turn, transform=1, synapse=0.1)
 
-    def compute_target(t, x):
+    def target(t, x):
         reward, left, right = x
-        if left > 0:
-            t_left = reward
+        if left > right:
+            return reward, -reward
         else:
-            t_left = -reward
-        if right > 0:
-            t_right = reward
-        else:
-            t_right = -reward
-            
-        return t_left, t_right
-    target = nengo.Node(compute_target, size_in=3)
+            return -reward, reward
+    target = nengo.Node(target, size_in=3)
+
+    nengo.Connection(choice, target[1:])
     nengo.Connection(facing_reward, target[0])
-    nengo.Connection(q.output, target[1:])
-    nengo.Connection(target, error.input, transform=-1)
-
-
-    nengo.Connection(error.output, conn.learning_rule)
+    
+    error = nengo.Node(None, size_in=2)
+    
+    nengo.Connection(q, error)
+    nengo.Connection(target, error, transform=-1)
+    
+    
+    
+    nengo.Connection(error, conn.learning_rule)
     
 
     
