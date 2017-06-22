@@ -4,11 +4,13 @@ import nengo_xbox
 import numpy as np
 
 map = '''
-#####
-#   #
-#   #
-#   #
-#####
+#######
+#     #
+#     #
+#     #
+#     #
+#     #
+#######
 '''
 
 class Cell(grid.Cell):
@@ -101,7 +103,8 @@ with model:
     speed = nengo.Node(lambda t, x: body.go_forward(x[0]*0.01), size_in=1)
     turn = nengo.Node(lambda t, x: body.turn(x[0]*0.01), size_in=1)
     
-
+    ctrl_speed = nengo.Node([0.5])
+    nengo.Connection(ctrl_speed, speed)
     
     facing_reward = FacingReward(body, prey)
     
