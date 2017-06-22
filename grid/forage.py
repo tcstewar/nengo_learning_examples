@@ -93,7 +93,7 @@ class State(nengo.Node):
 
 
         
-
+D = 3
 
 model = nengo.Network()
 with model:
@@ -113,35 +113,36 @@ with model:
     nengo.Connection(state, s, synapse=None)
 
 
-    def choice(t, x):
-        if x[0] > x[1]:
-            return 1,0
-        else:
-            return 0,1
-    choice = nengo.Node(choice, size_in=2)
 
-    q = nengo.Node(None, size_in=2)
+
+    def choice(t, x):
+        return np.eye(D)[np.argmax(x)]
+    choice = nengo.Node(choice, size_in=D)
+
+    q = nengo.Node(None, size_in=D)
     
     nengo.Connection(q, choice)
 
-    conn = nengo.Connection(s, q, function=lambda x: [0,0],
+    conn = nengo.Connection(s, q, function=lambda x: [0]*D,
                             learning_rule_type=nengo.PES(learning_rate=1e-4))
     
     nengo.Connection(choice[0], turn, transform=-1, synapse=0.1)
     nengo.Connection(choice[1], turn, transform=1, synapse=0.1)
 
     def target(t, x):
-        reward, left, right = x
-        if left > right:
-            return reward, -reward
-        else:
-            return -reward, reward
-    target = nengo.Node(target, size_in=3)
+        index = np.argmax(x[1:])
+        r = x[0]
+        
+        result = np.ones(D) * -r
+        result[index] = r
+        return result
+        
+    target = nengo.Node(target, size_in=D+1)
 
     nengo.Connection(choice, target[1:])
     nengo.Connection(facing_reward, target[0])
     
-    error = nengo.Node(None, size_in=2)
+    error = nengo.Node(None, size_in=D)
     
     nengo.Connection(q, error)
     nengo.Connection(target, error, transform=-1)
