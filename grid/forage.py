@@ -1,6 +1,5 @@
 import nengo
 import grid
-import nengo_xbox
 import numpy as np
 
 map = '''
@@ -88,7 +87,7 @@ class State(nengo.Node):
         if dist2 == 0:
             r = 1.0
         else:
-            r = min(0.5 / dist2, 1.0)
+            r = np.clip(0.5 / dist2, 0.2, 1.0)
         return -np.sin(theta)*r, np.cos(theta)*r
         
 
@@ -151,6 +150,18 @@ with model:
     
     nengo.Connection(error, conn.learning_rule)
     
-
+    def move_prey(t):
+        dy = prey.y - body.y
+        dx = prey.x - body.x
+        dist2 = dx**2 + dy**2
+        
+        while dist2 < 0.25:
+            prey.x = np.random.uniform(1, world.width-2)
+            prey.y = np.random.uniform(1, world.height-2)
+            dy = prey.y - body.y
+            dx = prey.x - body.x
+            dist2 = dx**2 + dy**2
+    move_prey = nengo.Node(move_prey)
+            
     
     
