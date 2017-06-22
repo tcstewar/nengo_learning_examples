@@ -27,7 +27,7 @@ class Prey(grid.ContinuousAgent):
             
 world = grid.World(Cell, map=map, directions=4)
 body = grid.ContinuousAgent()
-world.add(body, x=2, y=2, dir=2)
+world.add(body, x=2, y=2, dir=1)
 
 prey = Prey()
 world.add(prey, x=2, y=3)
@@ -101,16 +101,49 @@ with model:
     speed = nengo.Node(lambda t, x: body.go_forward(x[0]*0.01), size_in=1)
     turn = nengo.Node(lambda t, x: body.turn(x[0]*0.01), size_in=1)
     
-    xbox = nengo_xbox.Xbox()
-    
-    nengo.Connection(xbox.axis[1], speed)
-    nengo.Connection(xbox.axis[0], turn)
-    
     facing_reward = FacingReward(body, prey)
     
     state = State(body, prey)
     
+    s = nengo.Ensemble(n_neurons=200, dimensions=2, intercepts=nengo.dists.Uniform(0,1))
+    nengo.Connection(state, s, synapse=None)
     
     
+    q = nengo.networks.EnsembleArray(n_neurons=50, n_ensembles=2)
+    
+    noise = nengo.Node(nengo.processes.WhiteSignal(period=10.0, high=0.5, 
+                        rms=0.1), size_out=2)
+    nengo.Connection(noise, q.output)
+    
+    conn = nengo.Connection(s, q.input, function=lambda x: [0,0],
+                            learning_rule_type=nengo.PES(learning_rate=1e-4))
+    
+    nengo.Connection(q.output[0], turn, transform=-1, synapse=0.1)
+    nengo.Connection(q.output[1], turn, transform=1, synapse=0.1)
+    
+    error = nengo.networks.EnsembleArray(n_neurons=50, n_ensembles=2)
+    nengo.Connection(q.output, error.input)
+
+    def compute_target(t, x):
+        reward, left, right = x
+        if left > 0:
+            t_left = reward
+        else:
+            t_left = -reward
+        if right > 0:
+            t_right = reward
+        else:
+            t_right = -reward
+            
+        return t_left, t_right
+    target = nengo.Node(compute_target, size_in=3)
+    nengo.Connection(facing_reward, target[0])
+    nengo.Connection(q.output, target[1:])
+    nengo.Connection(target, error.input, transform=-1)
+
+
+    nengo.Connection(error.output, conn.learning_rule)
+    
+
     
     
