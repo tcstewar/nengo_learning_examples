@@ -137,6 +137,11 @@ with model:
     def target(t, x):
         index = np.argmax(x[1:])
         r = x[0]
+        
+        if index in [0,1]:
+            r = r - 0.3
+            
+        
         result = np.ones(D) * -r
         result[index] = r
         return result
@@ -198,4 +203,3 @@ with model:
 def on_step(sim):
     learned_far.update(sim)
     learned_near.update(sim)
-    
