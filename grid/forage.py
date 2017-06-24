@@ -101,31 +101,54 @@ with model:
     env = grid.GridNode(world)
     
     speed = nengo.Node(lambda t, x: body.go_forward(x[0]*0.01), size_in=1)
-    turn = nengo.Node(lambda t, x: body.turn(x[0]*0.01), size_in=1)
-    
-    ctrl_speed = nengo.Node([0.5])
+    turn = nengo.Node(lambda t, x: body.turn(x[0]*0.003), size_in=1)
+    turn.label = 'Motor Actions'
+    ctrl_speed = nengo.Node([0.3])
     nengo.Connection(ctrl_speed, speed)
     
     facing_reward = FacingReward(body, prey)
+    facing_reward.label = 'Reward (improved orientation)'
+    sensors = State(body, prey)
+    sensors.label = 'Sensors'
     
-    state = State(body, prey)
+    state = nengo.Ensemble(n_neurons=200, dimensions=2, intercepts=nengo.dists.Uniform(-0.1,1))
+    nengo.Connection(sensors, state, synapse=None)
+    state.label = 'Cortex'
+
+
+    bg = nengo.networks.BasalGanglia(D)
+    for net in bg.networks:
+        net.label = ''
+    for node in bg.nodes:
+        node.label = ''
+    thal = nengo.networks.Thalamus(D)
+    for net in thal.networks:
+        net.label = ''
+    for node in thal.all_nodes:
+        node.label = ''
+    for ens in thal.all_ensembles:
+        ens.label = ''
     
-    s = nengo.Ensemble(n_neurons=200, dimensions=2, intercepts=nengo.dists.Uniform(0,1))
-    nengo.Connection(state, s, synapse=None)
-
-
-
-
-    def choice(t, x):
-        return np.eye(D)[np.argmax(x)]
-    choice = nengo.Node(choice, size_in=D)
+    nengo.Connection(bg.output, thal.input)
+    
+    choice = thal.output#nengo.Node(None, size_in=D)
+    #nengo.Connection(thal.output, choice)
+    
+    #def choice(t, x):
+    #    return np.eye(D)[np.argmax(x)]
+    #choice = nengo.Node(choice, size_in=D)
 
     q = nengo.Node(None, size_in=D)
+    q.label = 'Q'
     
-    nengo.Connection(q, choice)
+    nengo.Connection(q, bg.input, transform=2)
+    
+    bias = nengo.Node(0.5, label='')
+    nengo.Connection(bias, bg.input, transform=np.ones((D, 1)))
 
-    conn = nengo.Connection(s, q, function=lambda x: [0]*D,
-                            learning_rule_type=nengo.PES(learning_rate=1e-4))
+    conn = nengo.Connection(state, q, function=lambda x: [0]*D,
+                            learning_rule_type=nengo.PES(learning_rate=1e-4,
+                                                         pre_tau=0.05))
     
     nengo.Connection(choice[0], turn, transform=-1, synapse=0.1)
     nengo.Connection(choice[1], turn, transform=1, synapse=0.1)
@@ -139,11 +162,13 @@ with model:
         return result
         
     target = nengo.Node(target, size_in=D+1)
+    target.label = 'Learning Target'
 
     nengo.Connection(choice, target[1:])
     nengo.Connection(facing_reward, target[0])
     
     error = nengo.Node(None, size_in=D)
+    error.label = 'Error'
     
     nengo.Connection(q, error)
     nengo.Connection(target, error, transform=-1)
@@ -163,16 +188,16 @@ with model:
             dist2 = dx**2 + dy**2
     move_prey = nengo.Node(move_prey)
             
+
     import nengo_learning_display
-    grid = np.array(np.meshgrid(np.linspace(-1,1,20), np.linspace(-1,1,20)))
-    grid = grid.T
-    #plot_s2 = nengo_learning_display.Plot2D(conn, domain=grid, range=(-0.2,0.2))
-    
     theta = np.linspace(-np.pi, np.pi, 30)
-    domain = np.array([np.sin(theta), np.cos(theta)]).T*0.3
-    plot_s1 = nengo_learning_display.Plot1D(conn, domain=domain, range=(-0.3,0.3))
+    domain = np.array([np.sin(theta), np.cos(theta)]).T
+    learned_far = nengo_learning_display.Plot1D(conn, domain=domain*0.3, range=(-0.5,0.5))
+    learned_near = nengo_learning_display.Plot1D(conn, domain=domain*1.0, range=(-1.0,1.0))
+    learned_far.label = '&nbsp;&nbsp;&nbsp;&nbsp;Learned Action Utilities (far target)'
+    learned_near.label = '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Learned Action Utilities (near target)'
     
 def on_step(sim):
-    plot_s1.update(sim)
-    #plot_s2.update(sim)
+    learned_far.update(sim)
+    learned_near.update(sim)
     
