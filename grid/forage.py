@@ -58,13 +58,14 @@ class FacingReward(nengo.Node):
         theta = np.abs(theta)
 
         value = 0
+        eps = 1e-5
         if self.last_t is not None:
-            if theta < self.last_theta:
+            if theta < self.last_theta-eps:
                 value = 1
-            elif theta > self.last_theta:
+            elif theta > self.last_theta-eps:
                 value = -1
         else:
-            value = 0
+            value = -1
         self.last_t = t
         self.last_theta = theta
         
@@ -146,9 +147,7 @@ with model:
     
     nengo.Connection(q, error)
     nengo.Connection(target, error, transform=-1)
-    
-    
-    
+
     nengo.Connection(error, conn.learning_rule)
     
     def move_prey(t):
@@ -164,5 +163,16 @@ with model:
             dist2 = dx**2 + dy**2
     move_prey = nengo.Node(move_prey)
             
+    import nengo_learning_display
+    grid = np.array(np.meshgrid(np.linspace(-1,1,20), np.linspace(-1,1,20)))
+    grid = grid.T
+    #plot_s2 = nengo_learning_display.Plot2D(conn, domain=grid, range=(-0.2,0.2))
     
+    theta = np.linspace(-np.pi, np.pi, 30)
+    domain = np.array([np.sin(theta), np.cos(theta)]).T*0.3
+    plot_s1 = nengo_learning_display.Plot1D(conn, domain=domain, range=(-0.3,0.3))
+    
+def on_step(sim):
+    plot_s1.update(sim)
+    #plot_s2.update(sim)
     
