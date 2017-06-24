@@ -1,6 +1,12 @@
+seed = 1
+import numpy as np
+import random
+random.seed(seed)
+np.random.seed(seed=seed)
+
+
 import nengo
 import grid
-import numpy as np
 
 map = '''
 #######
@@ -96,84 +102,74 @@ class State(nengo.Node):
         
 D = 3
 
-model = nengo.Network()
+model = nengo.Network(seed=seed)
 with model:
     env = grid.GridNode(world)
     
     speed = nengo.Node(lambda t, x: body.go_forward(x[0]*0.01), size_in=1)
     turn = nengo.Node(lambda t, x: body.turn(x[0]*0.003), size_in=1)
-    turn.label = 'Motor Actions'
     ctrl_speed = nengo.Node([0.3])
     nengo.Connection(ctrl_speed, speed)
     
     facing_reward = FacingReward(body, prey)
-    facing_reward.label = 'Reward (improved orientation)'
     sensors = State(body, prey)
-    sensors.label = 'Sensors'
     
-    state = nengo.Ensemble(n_neurons=200, dimensions=2, intercepts=nengo.dists.Uniform(-0.1,1))
+    state = nengo.Ensemble(n_neurons=200, dimensions=2, 
+                           intercepts=nengo.dists.Uniform(-0.1,1))
     nengo.Connection(sensors, state, synapse=None)
-    state.label = 'Cortex'
-
 
     bg = nengo.networks.BasalGanglia(D)
-    for net in bg.networks:
-        net.label = ''
-    for node in bg.nodes:
-        node.label = ''
     thal = nengo.networks.Thalamus(D)
-    for net in thal.networks:
-        net.label = ''
-    for node in thal.all_nodes:
-        node.label = ''
-    for ens in thal.all_ensembles:
-        ens.label = ''
-    
     nengo.Connection(bg.output, thal.input)
-    
-    choice = thal.output#nengo.Node(None, size_in=D)
-    #nengo.Connection(thal.output, choice)
-    
-    #def choice(t, x):
-    #    return np.eye(D)[np.argmax(x)]
-    #choice = nengo.Node(choice, size_in=D)
+    choice = thal.output
 
     q = nengo.Node(None, size_in=D)
-    q.label = 'Q'
-    
     nengo.Connection(q, bg.input, transform=2)
-    
     bias = nengo.Node(0.5, label='')
     nengo.Connection(bias, bg.input, transform=np.ones((D, 1)))
-
+    
     conn = nengo.Connection(state, q, function=lambda x: [0]*D,
                             learning_rule_type=nengo.PES(learning_rate=1e-4,
                                                          pre_tau=0.05))
-    
     nengo.Connection(choice[0], turn, transform=-1, synapse=0.1)
     nengo.Connection(choice[1], turn, transform=1, synapse=0.1)
 
     def target(t, x):
         index = np.argmax(x[1:])
         r = x[0]
-        
         result = np.ones(D) * -r
         result[index] = r
         return result
-        
     target = nengo.Node(target, size_in=D+1)
-    target.label = 'Learning Target'
 
     nengo.Connection(choice, target[1:])
     nengo.Connection(facing_reward, target[0])
     
     error = nengo.Node(None, size_in=D)
-    error.label = 'Error'
     
     nengo.Connection(q, error)
     nengo.Connection(target, error, transform=-1)
 
     nengo.Connection(error, conn.learning_rule)
+    
+    
+    facing_reward.label = 'Reward (improved orientation)'
+    sensors.label = 'Sensors'
+    state.label = 'Cortex'
+    turn.label = 'Motor Actions'
+    q.label = 'Q'
+    target.label = 'Learning Target'
+    error.label = 'Error'
+    for net in bg.networks:
+        net.label = ''
+    for node in bg.nodes:
+        node.label = ''
+    for net in thal.networks:
+        net.label = ''
+    for node in thal.all_nodes:
+        node.label = ''
+    for ens in thal.all_ensembles:
+        ens.label = ''
     
     def move_prey(t):
         dy = prey.y - body.y
@@ -192,8 +188,10 @@ with model:
     import nengo_learning_display
     theta = np.linspace(-np.pi, np.pi, 30)
     domain = np.array([np.sin(theta), np.cos(theta)]).T
-    learned_far = nengo_learning_display.Plot1D(conn, domain=domain*0.3, range=(-0.5,0.5))
-    learned_near = nengo_learning_display.Plot1D(conn, domain=domain*1.0, range=(-1.0,1.0))
+    learned_far = nengo_learning_display.Plot1D(conn, domain=domain*0.3, 
+                                                range=(-1.0,1.0))
+    learned_near = nengo_learning_display.Plot1D(conn, domain=domain*1.0, 
+                                                 range=(-1.0,1.0))
     learned_far.label = '&nbsp;&nbsp;&nbsp;&nbsp;Learned Action Utilities (far target)'
     learned_near.label = '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Learned Action Utilities (near target)'
     
