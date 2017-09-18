@@ -8,27 +8,28 @@
 # We convert this to a continuous domain by using a long time constant for t-1
 # and a short time constant for t.
 
-# In the model below, the agent ALWAYS MOVES RANDOMLY.  It is not *using* what
-# it learns to change its movement.  The goal here is simply to anticipate
-# future rewards.  Connecting this learning to the action selection system
-# as in the previous example is left as an exercise for the reader.
+# In the model below, the agent ALWAYS MOVES RANDOMLY in the first ten seconds.
+# Then the agent is told to choose the correct side with reward
 
-# The agent is given a reward whenever it is in the green square, and a 
+# The agent is given a reward whenever it is in the green square, and a
 # punishment (negative reward) whenever it is in the red square.  After some
 # time, it should learn to start anticipating this reward/punishment as
 # shown in the value graph.  In particular, the value graph should drop to a
 # low value when it turns right at the top of the T-maze, and it should
 # go to a high value when it turns left at the top of the T-maze.
 
-import nengo
-import numpy as np    
+# During the first ten seconds, the agent is learning its V(s).
+# Later, it will choose the way with a larger V(s).
 
+import nengo
+import numpy as np
+import nengo_gui
 # requires CCMSuite https://github.com/tcstewar/ccmsuite/
 import ccm.lib.grid
 import ccm.lib.continuous
 import ccm.ui.nengo
 
-mymap="""
+mymap = """
 #######
 #     #
 # # # #
@@ -36,6 +37,7 @@ mymap="""
 #G   B#
 #######
 """
+
 
 class Cell(ccm.lib.grid.Cell):
     def color(self):
@@ -46,6 +48,7 @@ class Cell(ccm.lib.grid.Cell):
         elif self.reward < 0:
             return 'red'
         return None
+
     def load(self, char):
         if char == '#':
             self.wall = True
@@ -55,10 +58,12 @@ class Cell(ccm.lib.grid.Cell):
         elif char == 'B':
             self.reward = -10
 
+
 world = ccm.lib.cellular.World(Cell, map=mymap, directions=4)
 
 body = ccm.lib.continuous.Body()
-world.add(body, x=1, y=2, dir=2)
+world.add(body, x=3, y=3, dir=0)
+
 
 def move(t, x):
     speed, rotation = x
@@ -67,62 +72,73 @@ def move(t, x):
     max_rotate = 10.0
     body.turn(rotation * dt * max_rotate)
     body.go_forward(speed * dt * max_speed)
-    
+
     if int(body.x) == 1:
         world.grid[4][4].wall = True
         world.grid[4][2].wall = False
     if int(body.x) == 4:
         world.grid[4][2].wall = True
         world.grid[4][4].wall = False
-    
 
-def detect(t):
-    angles = (np.linspace(-0.5, 0.5, 3) + body.dir ) % world.directions
+
+def detect(t,x):
+    if t <10 :
+        x=0
+    elif x>0:
+        x=x
+    elif x<0:
+        x=-0.1*(np.random.rand()-0.5)*x
+    angles = (np.array([-0.5-0.2*x,0,0.5]) + body.dir) % world.directions
     return [body.detect(d, max_distance=4)[0] for d in angles]
 
+
+tau = 0.1
 np.random.seed(1)
 model = nengo.Network(seed=2)
 with model:
-    movement = nengo.Node(move, size_in=2)
-
     env = ccm.ui.nengo.GridNode(world, dt=0.005)
+    def position_func(t):
+        return body.x / world.width * 2 - 1, 1 - body.y / world.height * 2, body.dir / world.directions
+    position = nengo.Node(position_func)
+    state = nengo.Ensemble(100, 3)
+    nengo.Connection(position, state, synapse=None)
 
-    stim_radar = nengo.Node(detect)
+    reward = nengo.Node(lambda t: body.cell.reward)
 
-    radar = nengo.Ensemble(n_neurons=50, dimensions=3, radius=4, seed=2,
-                noise=nengo.processes.WhiteSignal(10, 0.1, rms=1))
-    nengo.Connection(stim_radar, radar)
 
+    value = nengo.Ensemble(n_neurons=100, dimensions=1, radius=2)
+    learn_conn = nengo.Connection(state, value, function=lambda x: 0,
+                                  learning_rule_type=nengo.PES(learning_rate=1e-4,
+                                                               pre_tau=tau))
+    nengo.Connection(reward, learn_conn.learning_rule,
+                     transform=-1, synapse=tau)
+    nengo.Connection(value, learn_conn.learning_rule,
+                     transform=-0.9, synapse=tau)
+    nengo.Connection(value, learn_conn.learning_rule,
+                     transform=1, synapse=tau)
+
+
+
+    navigate = nengo.Node(detect, size_in=1)
+    radar = nengo.Ensemble(n_neurons=200, dimensions=3, radius=4, seed=2,
+                           noise=nengo.processes.WhiteSignal(10, 0.1, rms=1))
+    nengo.Connection(navigate, radar)
 
     def braiten(x):
         turn = x[2] - x[0]
         spd = x[1] - 0.5
         return spd, turn
-    nengo.Connection(radar, movement, function=braiten)  
-    
-    def position_func(t):
-        return body.x / world.width * 2 - 1, 1 - body.y/world.height * 2, body.dir / world.directions
-    position = nengo.Node(position_func)
-    
-    state = nengo.Ensemble(100, 3)
+    movement = nengo.Node(move, size_in=2)
+    nengo.Connection(radar, movement, function=braiten)
 
-    nengo.Connection(position, state, synapse=None)
-    
-    reward = nengo.Node(lambda t: body.cell.reward)
-        
-    tau=0.1
-    value = nengo.Ensemble(n_neurons=50, dimensions=1)
+    value_delay = nengo.Ensemble(100,1,radius=2)
+    value_change = nengo.Ensemble(100,1,radius=1)
+    nengo.Connection(value, value_delay,transform=-1)
+    nengo.Connection(value, value_change)
+    nengo.Connection(value_delay, value_change, synapse=0.05)
 
-    learn_conn = nengo.Connection(state, value, function=lambda x: 0,
-                                  learning_rule_type=nengo.PES(learning_rate=1e-4,
-                                                               pre_tau=tau))
-    nengo.Connection(reward, learn_conn.learning_rule, 
-                     transform=-1, synapse=tau)
-    nengo.Connection(value, learn_conn.learning_rule, 
-                     transform=-0.9, synapse=0.01)
-    nengo.Connection(value, learn_conn.learning_rule, 
-                     transform=1, synapse=tau)
-        
-        
-        
-        
+    nengo.Connection(value_change, navigate)
+
+nengo_gui.GUI(__file__).start()
+
+
